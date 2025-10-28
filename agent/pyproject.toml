@@ -1,0 +1,16 @@
+[project]
+name = "app"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "bedrock-agentcore>=0.1.7",
+    "checkov>=3.2.10",
+    "dotenv>=0.9.9",
+    "gitpython>=3.1.45",
+    "langfuse>=3.6.0",
+    "strands-agents>=1.10.0",
+    "strands-agents-tools>=0.2.9",
+    "uv>=0.8.23",
+]
