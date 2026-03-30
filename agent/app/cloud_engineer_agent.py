@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Dict, Any, List
 import uuid
 
-from strands import Agent
+from strands import Agent, AgentSkills
 from strands.session.file_session_manager import FileSessionManager
 from strands_tools import file_read, file_write, tavily
 
@@ -46,6 +46,9 @@ from .terraform_command_tools import (
     terraform_plan,
 )
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
+
+# Skills directory path
+SKILLS_DIR = os.path.join(os.path.dirname(__file__), "skills")
 
 
 # Configure the root strands logger
@@ -191,16 +194,25 @@ class CloudEngineerAgent:
             )
             logger.info("Added additional prompt to system prompt")
 
+        # Initialize skills plugin
+        self.skills_plugin = AgentSkills(skills=SKILLS_DIR)
+        available_skills = self.skills_plugin.get_available_skills()
+        logger.info(
+            "Skills plugin loaded: %s",
+            [s.name if hasattr(s, "name") else s for s in available_skills],
+        )
+
         self.agent = (
             Agent(
                 model=model,
                 tools=base_tools + git_tools + terraform_tools + cloud_tools,
                 system_prompt=system_prompt,
+                plugins=[self.skills_plugin],
                 trace_attributes={
                     "user.id": os.environ["USER_ID"],
                     "session.id": session_id,
                     "langfuse.environment": "dev",  # TODO: add environment variable
-                    "langfuse.tags": ["cloud-engineer-agent", "stationf-genai-loft"],
+                    "langfuse.tags": ["cloud-engineer-agent"],
                 },
                 session_manager=session_manager,
             )
@@ -324,7 +336,7 @@ class CloudEngineerAgent:
         # Use environment variable if project_name not provided
         if project_name is None:
             project_name = os.environ.get(
-                "PROJECT_NAME", "demo-app-cloud-engineer-agent"
+                "PROJECT_NAME", "my-app"
             )
             if not project_name:
                 raise ValueError("PROJECT_NAME must be provided or set in environment")
@@ -371,6 +383,19 @@ class CloudEngineerAgent:
             logger.info("Executing AI agent to implement feature...")
             implementation_response = self.agent(formatted_prompt)
 
+            # Verify skill activation after execution
+            activated_skills = self._get_activated_skill_names()
+            if activated_skills:
+                logger.info(
+                    "Skills activated during execution: %s", activated_skills
+                )
+            else:
+                logger.warning(
+                    "NO skills were activated during execution for issue %s. "
+                    "Best practices may not have been followed.",
+                    issue_id,
+                )
+
             # Compile results
             result = {
                 "status": "success",
@@ -380,6 +405,7 @@ class CloudEngineerAgent:
                 "target_branch": target_branch,
                 "feature_branch": feature_branch,
                 "issue_content": parsed_issue.to_dict(),
+                "skills_activated": activated_skills,
                 "agent_response": (
                     implementation_response.message
                     if hasattr(implementation_response, "message")
@@ -407,6 +433,15 @@ class CloudEngineerAgent:
                 "error": str(e),
                 "failed_at": datetime.now().isoformat(),
             }
+
+    def _get_activated_skill_names(self) -> list:
+        """Get list of skill names activated during agent execution."""
+        try:
+            activated = self.skills_plugin.get_activated_skills(self.agent)
+            return [s.name if hasattr(s, "name") else s for s in activated]
+        except Exception as e:
+            logger.warning("Could not retrieve activated skills: %s", e)
+            return []
 
     def _format_issue_content(self, issue: IssueContent) -> str:
         """Format issue content for prompt inclusion."""

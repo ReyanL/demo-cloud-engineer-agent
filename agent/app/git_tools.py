@@ -86,20 +86,55 @@ def _run_git_command(
         raise
 
 
+def _check_remote_branch_exists(repo_url: str, branch: str) -> bool:
+    """Check if a branch exists on the remote repository."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", "--heads", repo_url, branch],
+            capture_output=True, text=True, timeout=30,
+        )
+        return bool(result.stdout.strip())
+    except (subprocess.SubprocessError, OSError):
+        return False
+
+
+def _list_remote_branches(repo_url: str) -> list[str]:
+    """List all branches available on the remote repository."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", "--heads", repo_url],
+            capture_output=True, text=True, timeout=30,
+        )
+        branches = []
+        for line in result.stdout.strip().split("\n"):
+            if line.strip():
+                ref = line.split("\t")[-1]
+                branches.append(ref.replace("refs/heads/", ""))
+        return branches
+    except (subprocess.SubprocessError, OSError):
+        return []
+
+
 def _get_default_local_path(project_name: str) -> str:
     """
     Get default local path for repository.
+
+    Uses /app/repos in Docker container, <cwd>/repos locally.
+    Path is always absolute and within the application directory
+    to ensure compatibility with MCP tools (e.g., Checkov scan).
 
     Args:
         project_name: GitLab project name or URL-encoded path
 
     Returns:
-        Default local path
+        Absolute local path for the repository
     """
-    # Extract project name from project_name (handle URL-encoded paths)
     project_name = project_name.split("/")[-1]
-    repos_dir = Path("./repos")
-    repos_dir.mkdir(exist_ok=True)
+    if os.environ.get("DOCKER_CONTAINER"):
+        repos_dir = Path("/app/repos")
+    else:
+        repos_dir = Path.cwd() / "repos"
+    repos_dir.mkdir(parents=True, exist_ok=True)
     return str(repos_dir / project_name)
 
 
@@ -130,8 +165,13 @@ def clone_branch(
 
     logger.info("Cloning branch '%s' from project '%s'", target_branch, project_name)
 
-    # Determine local path
-    repo_path = local_path or _get_default_local_path(project_name)
+    # Force default path within /app for MCP tool compatibility (e.g., Checkov scan)
+    repo_path = _get_default_local_path(project_name)
+    if local_path and local_path != repo_path:
+        logger.warning(
+            "Ignoring custom local_path '%s', using '%s' for MCP tool compatibility",
+            local_path, repo_path,
+        )
 
     # Construct repository URL
     repo_url = _construct_repo_url(project_name)
@@ -173,12 +213,35 @@ def clone_branch(
                     ["git", "pull", "origin", target_branch], cwd=repo_path
                 )
             else:
+                # Verify branch exists on remote before checking out
+                remote_check = subprocess.run(
+                    ["git", "ls-remote", "--heads", "origin", target_branch],
+                    cwd=repo_path, capture_output=True, text=True, timeout=30,
+                )
+                if not remote_check.stdout.strip():
+                    available = _list_remote_branches(repo_url)
+                    raise RuntimeError(
+                        f"Branch '{target_branch}' does not exist on remote repository "
+                        f"'{project_name}'. Available branches: "
+                        f"{', '.join(available) if available else 'none found'}. "
+                        f"Please specify an existing branch."
+                    )
                 logger.info("Checking out remote branch: %s", target_branch)
                 _run_git_command(
                     ["git", "checkout", "-b", target_branch, f"origin/{target_branch}"],
                     cwd=repo_path,
                 )
         else:
+            # Verify target branch exists on remote before cloning
+            if not _check_remote_branch_exists(repo_url, target_branch):
+                available = _list_remote_branches(repo_url)
+                raise RuntimeError(
+                    f"Branch '{target_branch}' does not exist on remote repository "
+                    f"'{project_name}'. Available branches: "
+                    f"{', '.join(available) if available else 'none found'}. "
+                    f"Please specify an existing branch."
+                )
+
             # Clone the repository
             logger.info("Cloning repository to %s", repo_path)
             _run_git_command(
@@ -258,7 +321,7 @@ def create_branch(
     )
 
     # Determine local path
-    repo_path = local_path or _get_default_local_path(project_name)
+    repo_path = _get_default_local_path(project_name)
 
     if not os.path.exists(repo_path):
         error_msg = f"Repository not found at {repo_path}. Please clone it first."
@@ -331,7 +394,7 @@ def push_branch(
     logger.info("Pushing branch '%s' to project '%s'", branch_name, project_name)
 
     # Determine local path
-    repo_path = local_path or _get_default_local_path(project_name)
+    repo_path = _get_default_local_path(project_name)
 
     if not os.path.exists(repo_path):
         error_msg = f"Repository not found at {repo_path}. Please clone it first."
@@ -563,7 +626,7 @@ def create_merge_request(
     _configure_glab_auth()
 
     # Determine local path
-    repo_path = local_path or _get_default_local_path(project_name)
+    repo_path = _get_default_local_path(project_name)
 
     if not os.path.exists(repo_path):
         error_msg = f"Repository not found at {repo_path}. Please clone it first."
@@ -642,7 +705,7 @@ def get_repository_path(project_name: str, local_path: Optional[str] = None) -> 
     Returns:
         Local repository path
     """
-    return local_path or _get_default_local_path(project_name)
+    return _get_default_local_path(project_name)
 
 
 @tool
@@ -659,7 +722,7 @@ def cleanup_repository(
     Returns:
         Dict containing cleanup status
     """
-    repo_path = local_path or _get_default_local_path(project_name)
+    repo_path = _get_default_local_path(project_name)
 
     if os.path.exists(repo_path):
         logger.info("Cleaning up repository at %s", repo_path)

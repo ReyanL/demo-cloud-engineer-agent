@@ -20,7 +20,8 @@ resource "aws_lambda_function" "webhook_handler" {
     variables = {
       GITLAB_WEBHOOK_SECRET_ARN = aws_secretsmanager_secret.gitlab_webhook_token.arn
       LOG_LEVEL                 = "INFO"
-      AGENT_ARN                 = awscc_bedrockagentcore_runtime.cloud_engineer_agent.agent_runtime_arn
+      AGENT_ARN                 = aws_bedrockagentcore_agent_runtime.cloud_engineer_agent.agent_runtime_arn
+      AGENT_BOT_USERNAME        = var.agent_bot_username
     }
   }
 

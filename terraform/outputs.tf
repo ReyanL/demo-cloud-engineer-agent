@@ -45,5 +45,5 @@ output "gitlab_audience" {
 
 output "agentcore_runtime_arn" {
   description = "ARN of the AgentCore runtime"
-  value       = awscc_bedrockagentcore_runtime.cloud_engineer_agent.agent_runtime_arn
+  value       = aws_bedrockagentcore_agent_runtime.cloud_engineer_agent.agent_runtime_arn
 }

@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "project" {
   description = "Project name"
   type        = string
-  default     = "demo-cloud-engineer-agent"
+  default     = "cloud-engineer-agent"
 }
 
 variable "gitlab_webhook_secret" {
@@ -75,4 +75,10 @@ variable "langfuse_otlp_endpoint" {
   description = "OTLP endpoint for Langfuse/OpenTelemetry (set empty to disable)"
   type        = string
   default     = ""
+}
+
+variable "agent_bot_username" {
+  description = "GitLab bot username that triggers the cloud engineer agent when assigned to issues"
+  type        = string
+  default     = "your-gitlab-bot-username"
 }

@@ -8,7 +8,7 @@ ENV UV_SYSTEM_PYTHON=1 \
     DOCKER_CONTAINER=1 \
     AWS_REGION=us-west-2 \
     AWS_DEFAULT_REGION=us-west-2 \
-    BEDROCK_AGENTCORE_MEMORY_ID=runtime_mem-D7P6D4D73b \
+    BEDROCK_AGENTCORE_MEMORY_ID=${BEDROCK_AGENTCORE_MEMORY_ID:-your_memory_id} \
     BEDROCK_AGENTCORE_MEMORY_NAME=runtime_mem
 
 
@@ -34,8 +34,6 @@ RUN curl -sSL "https://raw.githubusercontent.com/upciti/wakemeops/main/assets/in
     apt-get install -y glab && \
     rm -rf /var/lib/apt/lists/*
 
-RUN git config --global user.email "reyange.agent@devoteam.com" && git config --global user.name "Best Agent Ever"
-
 # Copy entire project (respecting .dockerignore)
 COPY . .
 
@@ -49,7 +47,16 @@ RUN useradd -m -u 1000 bedrock_agentcore
 RUN mkdir -p /home/bedrock_agentcore/.config/glab-cli && \
     chown -R bedrock_agentcore:bedrock_agentcore /home/bedrock_agentcore/.config
 
+# Allow bedrock_agentcore to create files in /app (Checkov reports, cache, etc.)
+RUN chown bedrock_agentcore:bedrock_agentcore /app
+
+# Create repos directory for cloned repositories (must be within /app for MCP tool compatibility)
+RUN mkdir -p /app/repos && chown bedrock_agentcore:bedrock_agentcore /app/repos
+
 USER bedrock_agentcore
+
+# Git identity must be set AFTER switching to bedrock_agentcore user
+RUN git config --global user.email "bot@example.com" && git config --global user.name "Cloud Engineer Agent"
 
 EXPOSE 8080
 

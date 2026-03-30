@@ -64,3 +64,6 @@ logs/
 
 # Bedrock AgentCore specific
 .bedrock_agentcore.yaml
+
+# Claude MD
+CLAUDE.md

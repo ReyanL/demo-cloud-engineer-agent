@@ -28,6 +28,7 @@ secrets_client = boto3.client("secretsmanager")
 
 # Environment variables
 WEBHOOK_SECRET_ARN = os.environ.get("GITLAB_WEBHOOK_SECRET_ARN")
+AGENT_BOT_USERNAME = os.environ.get("AGENT_BOT_USERNAME")
 
 # Cache for webhook secret
 _webhook_secret_cache: Optional[str] = None
@@ -90,6 +91,27 @@ def verify_gitlab_signature(payload: str, signature: Optional[str]) -> bool:
     except Exception as e:
         logger.error(f"Error during signature verification: {e}")
         return False
+
+
+def is_bot_assigned(payload: Dict[str, Any], bot_username: str) -> bool:
+    """
+    Check whether the configured bot user is among the issue assignees.
+
+    Args:
+        payload: The full GitLab webhook payload (root level).
+        bot_username: The bot username to look for.
+
+    Returns:
+        True if the bot username appears in the assignees list, False otherwise.
+    """
+    assignees = payload.get("assignees")
+    if not assignees or not isinstance(assignees, list):
+        return False
+    return any(
+        assignee.get("username") == bot_username
+        for assignee in assignees
+        if isinstance(assignee, dict)
+    )
 
 
 def invoke_cloud_engineer_agent(issue_payload: dict) -> dict:
@@ -244,14 +266,23 @@ def process_webhook_event(
 
     elif event_type == "Issue Hook":
         attrs = payload.get("object_attributes", {})
-        print(f"{attrs=}")
         result["issue_id"] = attrs.get("iid")
         result["description"] = attrs.get("description")
         result["action"] = attrs.get("action")
         result["state"] = attrs.get("state")
         result["title"] = attrs.get("title")
-        print(f"Triggering agent with {result=}")
-        invoke_cloud_engineer_agent(result)
+
+        if AGENT_BOT_USERNAME and is_bot_assigned(payload, AGENT_BOT_USERNAME):
+            logger.info(
+                f"Bot user '{AGENT_BOT_USERNAME}' is assigned to issue "
+                f"#{result['issue_id']}. Invoking cloud engineer agent."
+            )
+            invoke_cloud_engineer_agent(result)
+        else:
+            logger.info(
+                f"Issue #{result['issue_id']} skipped: bot user "
+                f"'{AGENT_BOT_USERNAME}' is not among the assignees."
+            )
 
     elif event_type == "Pipeline Hook":
         attrs = payload.get("object_attributes", {})

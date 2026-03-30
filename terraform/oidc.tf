@@ -86,8 +86,8 @@ resource "aws_iam_policy" "gitlab_terraform_policy" {
           "s3:ListBucket"
         ]
         Resource = [
-          "arn:aws:s3:::demo-cloud-engineer-agent-state", # Backend state bucket
-          "arn:aws:s3:::demo-cloud-engineer-agent-state/*"
+          "arn:aws:s3:::${var.state_bucket_name}", # Backend state bucket
+          "arn:aws:s3:::${var.state_bucket_name}/*"
         ]
       },
       # Lambda Management

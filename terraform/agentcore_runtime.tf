@@ -1,7 +1,7 @@
 # IAM role for Agent Runtime
-resource "awscc_iam_role" "agent_runtime_role" {
-  role_name = "bedrock-agent-runtime-role"
-  assume_role_policy_document = jsonencode({
+resource "aws_iam_role" "agent_runtime_role" {
+  name = "bedrock-agent-runtime-role"
+  assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
@@ -14,17 +14,16 @@ resource "awscc_iam_role" "agent_runtime_role" {
     ]
   })
 
-  tags = [{
-    key   = "Project"
-    value = "cloud-engineer-agent"
-  }]
+  tags = {
+    Project = "cloud-engineer-agent"
+  }
 }
 
 # IAM policy for Agent Runtime
-resource "awscc_iam_role_policy" "agent_runtime_policy" {
-  role_name   = awscc_iam_role.agent_runtime_role.role_name
-  policy_name = "bedrock-agent-runtime-policy"
-  policy_document = jsonencode({
+resource "aws_iam_role_policy" "agent_runtime_policy" {
+  role    = aws_iam_role.agent_runtime_role.name
+  name    = "bedrock-agent-runtime-policy"
+  policy  = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
@@ -355,16 +354,17 @@ resource "docker_registry_image" "cloud_engineer_agent" {
 }
 
 # Agent Runtime
-resource "awscc_bedrockagentcore_runtime" "cloud_engineer_agent" {
+resource "aws_bedrockagentcore_agent_runtime" "cloud_engineer_agent" {
   agent_runtime_name = "cloud_engineer_agent"
   description        = "Cloud Engineer Agent"
-  role_arn           = awscc_iam_role.agent_runtime_role.arn
+  role_arn           = aws_iam_role.agent_runtime_role.arn
 
-  agent_runtime_artifact = {
-    container_configuration = {
+  agent_runtime_artifact {
+    container_configuration {
       container_uri = "${replace(data.aws_ecr_authorization_token.token.proxy_endpoint, "https://", "")}/${local.agent_name}:latest"
     }
   }
+
   environment_variables = {
     "DISABLE_ADOT_OBSERVABILITY"  = "true"
     "OTEL_EXPORTER_OTLP_ENDPOINT" = var.langfuse_otlp_endpoint
@@ -374,14 +374,13 @@ resource "awscc_bedrockagentcore_runtime" "cloud_engineer_agent" {
     "BYPASS_TOOL_CONSENT"         = "true"
   }
 
-  network_configuration = {
+  network_configuration {
     network_mode = "PUBLIC"
   }
 
 
   tags = {
-    key   = "Project"
-    value = local.agent_name
+    Project = local.agent_name
   }
   # TODO: add missing parameter observability:enabled: false & change timeout to 10 minutes
 
